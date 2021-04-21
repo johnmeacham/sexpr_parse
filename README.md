@@ -50,3 +50,10 @@ The single file sexpr_parse.c and the corresponding header files can just be
 linked into your project, there are no dependencies. if you wish to regenerate
 the lexer after modifying it then you need re2c to compile the c file.
 
+## limits
+
+In order to use a static amount of memory there are limits on the stack size
+set in the header file. these can easily be lifted by changing the stack to
+a resizable buffer such as  https://github.com/johnmeacham/resizable_buf
+however you will be responsible for freeing the data in the buffer
+afterwords.
