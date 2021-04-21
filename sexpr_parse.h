@@ -6,6 +6,7 @@
  * calls functions supplied by who is using it */
 
 #include <inttypes.h>
+#include <stdbool.h>
 
 
 // this limits the number of parseable items in a single list.

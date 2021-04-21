@@ -1,6 +1,8 @@
-all: sexpr_parse
+all: test_sexpr_parse
 
-CFLAGS= -DTEST_CASE -g
+CFLAGS= -g
+
+test_sexpr_parse: test_sexpr_parse.c sexpr_parse.c
 
 %.c: %.c.re
 	re2c -W $< -o $@
