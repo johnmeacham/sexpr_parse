@@ -25,7 +25,7 @@ push_control(struct parse_state *ps, char control)
 {
         struct centry *ctop = ps->control_stack + ps->csptr++;
         ctop->what = control;
-        ctop->unary = control != '(' && control != '.';
+        ctop->unary = !strchr("([{.", control);
         ctop->depth = ps->sptr;
 }
 
@@ -40,6 +40,8 @@ static int error(struct parse_state *ps, char *s, ...)
         va_end(ap);
         return sp_error(ps, ps->fname, ps->lineno + 1, errbuf);
 }
+
+#define OC(x,y) ((x) << 8 | (y))
 
 static int
 close_enclosed(struct parse_state *ps, char control)
@@ -59,17 +61,29 @@ close_enclosed(struct parse_state *ps, char control)
                 }
                 ctop--;
         }
-        if (ctop->what == '(') {
+        switch (OC(ctop->what, control)) {
+        case OC('(', ']'):
+        case OC('(', '}'):
+        case OC('{', ')'):
+        case OC('{', ']'):
+        case OC('[', ')'):
+        case OC('[', '}'):
+                err |=  error(ps, "mismatched delimiters '%c' '%c'", ctop->what, control);
+        case OC('(', ')'):
+        case OC('[', ']'):
+        case OC('{', '}'):
                 ps->csptr--;
                 int len = sptr - ctop->depth;
-                sp_cell_t v = is_cons
-                              ?  sp_cons(ps, ctop->what, &ps->stack[sptr - len], len, cdr)
-                              :  sp_list(ps, ctop->what, &ps->stack[sptr - len], len);
+                sp_cell_t v =
+                        is_cons && !len ? cdr :
+                        is_cons ? sp_cons(ps, ctop->what, &ps->stack[sptr - len], len, cdr) :
+                        sp_list(ps, ctop->what, &ps->stack[sptr - len], len);
                 ps->sptr = sptr - len;
                 push(ps, v);
                 return err;
+        default:
+                return err ? err : error(ps, "unexpected closing '%c'", control);
         }
-        return err ? err : error(ps, "unexpected closing '%c'", control);
 }
 
 
@@ -113,8 +127,8 @@ sp_scan(struct parse_state *ps, char *start)
                 "-"             { push(ps, sp_symbol(ps, t, ps->cursor)); continue; }
                 ",@"            { push_control(ps, '@'); continue; }
                 "#;"            { push_control(ps, ';'); continue; }
-                [.('`,#]        { push_control(ps, *t); continue; }
-                ")"             { err = close_enclosed(ps, *t); continue; }
+                [.{[('`,#]     { push_control(ps, *t); continue; }
+                [\])}]          { err = close_enclosed(ps, *t); continue; }
                 [^]             { err = error(ps, "Unexpected char '%c'", *t); continue; }
                 */
         }

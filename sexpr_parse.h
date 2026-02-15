@@ -70,9 +70,10 @@ sp_cell_t sp_number(struct parse_state *ps, char *s, char *e, int radix);
 /* unary operators are '|,|`|,@|# and they are identified by their own
  * characters except ,@ which passes in @ */
 sp_cell_t sp_unary(struct parse_state *ps, char unop, sp_cell_t v);
-/* delim will be '(' for lists */
+
+/* delim will be '(', '[' or '{' */
 sp_cell_t sp_list(struct parse_state *nonce, char delim, sp_cell_t *start, int len);
-/* explicit cons */
+/* explicit cons ( car . cdr ) */
 sp_cell_t sp_cons(struct parse_state *nonce, char delim, sp_cell_t *start, int len, sp_cell_t cdr);
 
 /* this is called when an unknown character is encountered, if it returns non

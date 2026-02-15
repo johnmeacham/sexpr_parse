@@ -23,18 +23,20 @@ and implement these functions to combine atoms into values:
 /* apply unary operator such as quote, quasi-quote, vector etc. */
 uintptr_t sp_unary(struct parse_state *ps, char unop, uintptr_t v);
 
-/* create a list from an array of values. delim will always be '(' for
-plain lists  */
+/* create a list from an array of values.
+   delim may be '(', '[' or '{' 	*/
 uintptr_t sp_list(struct parse_state *nonce, char delim, uintptr_t *start, int len);
 
-/* explicit cons operator (a b c . d). passed an array of the list part
-as well as the cdr */
+/* explicit cons operator (a b c . d)
+passed an array of the list part as well as the cdr.
+deliminator may be '(', '[' or '{' */
+
 uintptr_t sp_cons(struct parse_state *nonce, char delim, uintptr_t *start, int len, uintptr_t cdr);
 ```
 
 then in order to run the parser pass a null terminated string into sp_scan.
 ```c
-char *data = "(a b c . d)";
+char *data = "(a [b c] . d)";
 
 struct parse_state ps = PARSE_STATE_INIT("filename.scm", NULL);
 
