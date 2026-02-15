@@ -1,6 +1,8 @@
 /* plain testing that reads s-exprs into a static buffer then prints them out
- * does no memory management at all and just mallocs everything.
- * this representation is only a toy example. */
+ * The data is stored in a single malloced buffer and the uintptr_t nodes just
+ * contain offsets into said buffer, all memory can be freed by freeing that one
+ * buffer.
+ */
 
 #include "sexpr_parse.h"
 #include <err.h>
@@ -25,10 +27,18 @@ struct value {
         uintptr_t rest[];
 };
 
-struct value *alloc_value(int n)
+struct value *alloc_bytes(int tag, int n)
 {
-        return calloc(1, sizeof(struct value) + sizeof(uintptr_t) * n);
+				struct value *s = calloc(1, sizeof(struct value) + n);
+				s->tag = tag;
+				return s;
 }
+
+struct value *alloc_value(int tag, int n)
+{
+				return alloc_bytes(tag, sizeof(uintptr_t) * n);
+}
+
 
 int estimate_size(uintptr_t n)
 {
@@ -114,37 +124,25 @@ void dump_value(uintptr_t u, int n, bool bol)
         }
 }
 
-size_t
-my_strlcpy(char * dst, const char * src, size_t maxlen) {
-    const size_t srclen = strlen(src);
-    if (srclen + 1 < maxlen) {
-        memcpy(dst, src, srclen + 1);
-    } else if (maxlen != 0) {
-        memcpy(dst, src, maxlen - 1);
-        dst[maxlen-1] = '\0';
-    }
-    return srclen;
-}
-
 uintptr_t sp_string(struct parse_state *nonce, char *b, char *e)
 {
-        struct value *s = alloc_value(((e - b + 1) + 7) / sizeof(uintptr_t));
-        s->tag = TAG_STRING;
-        my_strlcpy((char *)s->rest, b, e - b + 1);
+        struct value *s =  alloc_bytes(TAG_STRING, e - b + 1);
+				memcpy(s->rest, b, e - b);
+				((char *)s->rest)[e - b] = '\0';
         return (uintptr_t)s;
 }
+
 uintptr_t sp_symbol(struct parse_state *nonce, char *b, char *e)
 {
-        struct value *s = alloc_value(((e - b + 1) + 7) / sizeof(uintptr_t));
-        s->tag = TAG_SYMBOL;
-        my_strlcpy((char *)s->rest, b, e - b + 1);
+        struct value *s =  alloc_bytes(TAG_SYMBOL, e - b + 1);
+				memcpy(s->rest, b, e - b);
+				((char *)s->rest)[e - b] = '\0';
         return (uintptr_t)s;
 }
 
 uintptr_t sp_number(struct parse_state *nonce, char *b, char *e, int radix)
 {
-        struct value *s = alloc_value(1);
-        s->tag = TAG_NUMBER;
+        struct value *s = alloc_value(TAG_NUMBER, 1);
         intptr_t num = 0;
         bool negate = false;
         if (*b == '-') {
@@ -161,8 +159,7 @@ uintptr_t sp_number(struct parse_state *nonce, char *b, char *e, int radix)
 
 uintptr_t sp_unary(struct parse_state *nonce, char unop, uintptr_t v)
 {
-        struct value *s = alloc_value(2);
-        s->tag = TAG_UNARY;
+        struct value *s = alloc_value(TAG_UNARY, 2);
         s->rest[0] = unop;
         s->rest[1] = v;
         return (uintptr_t)s;
@@ -170,8 +167,7 @@ uintptr_t sp_unary(struct parse_state *nonce, char unop, uintptr_t v)
 
 uintptr_t sp_list(struct parse_state *nonce, char delim, uintptr_t *start, int len)
 {
-        struct value *s = alloc_value(len + 1);
-        s->tag = TAG_VECTOR;
+        struct value *s = alloc_value(TAG_VECTOR, len + 1);
         s->rest[0] = len;
         memcpy(&s->rest[1], start, len * sizeof(uintptr_t));
         return (uintptr_t)s;
@@ -179,8 +175,7 @@ uintptr_t sp_list(struct parse_state *nonce, char delim, uintptr_t *start, int l
 /* explicit cons */
 uintptr_t sp_cons(struct parse_state *nonce, char delim, uintptr_t *start, int len, uintptr_t cdr)
 {
-        struct value *s = alloc_value(len + 2);
-        s->tag = TAG_CONS;
+        struct value *s = alloc_value(TAG_CONS, len + 2);
         s->rest[0] = len;
         s->rest[1] = cdr;
         memcpy(&s->rest[2], start, len * sizeof(uintptr_t));

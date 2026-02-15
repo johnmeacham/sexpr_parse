@@ -1,10 +1,10 @@
 # sexpr_parse
-Simple and fast  standalone c parser for s-expressions. 
+Simple and fast  standalone c parser for s-expressions.
 
 This is a one file parser for lisp and scheme style s-expressions, it is fully
 standalone and does not impose any particular representation on what you do with
-the parsed expressions other than you can represent them in a uintptr_t (which
-can hold a void * or a number)
+the parsed expressions other than you can represent them in SP_CELL_TYPE which
+defaults to uintptr_t (which can hold a void * or a number)
 
 In order to use it you should implement these functions to convert the raw atoms
 to your representation, the characters pointed to will be inside the buffer you
@@ -15,7 +15,7 @@ uintptr_t sp_symbol(struct parse_state *ps, char *s, char *e);
 uintptr_t sp_string(struct parse_state *ps, char *s, char *e);
 uintptr_t sp_number(struct parse_state *ps, char *s, char *e, int radix);
 ```
-        
+
 and implement these functions to combine atoms into values:
 
 
@@ -57,3 +57,10 @@ set in the header file. these can easily be lifted by changing the stack to
 a resizable buffer such as  https://github.com/johnmeacham/resizable_buf
 however you will be responsible for freeing the data in the buffer
 afterwords.
+
+
+## error handling
+
+You may redefine the SP_ERROR macro to change how errors are reported as
+described in the header file, or define a whole new sp_error function yourself
+if you need to be super custom.

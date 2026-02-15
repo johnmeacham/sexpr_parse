@@ -1,14 +1,15 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdbool.h>
 #include "sexpr_parse.h"
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
 
 static void
-push(struct parse_state *ps,  uintptr_t c)
+push(struct parse_state *ps,  sp_cell_t c)
 {
-        uintptr_t *ts = ps->stack + ps->sptr++;
+        sp_cell_t *ts = ps->stack + ps->sptr++;
         struct centry *ctop =  ps->control_stack + ps->csptr - 1;
         *ts = c;
         while (ctop->unary && ps->sptr - 1 == ctop->depth) {
@@ -32,7 +33,7 @@ close_enclosed(struct parse_state *ps, char control)
 {
         struct centry *ctop = ps->control_stack + ps->csptr - 1;
         bool is_cons = false;
-        uintptr_t cdr = 0;
+        sp_cell_t cdr = 0;
         int sptr = ps->sptr;
         if (ctop->what == '.') {
                 ps->csptr--;
@@ -50,7 +51,7 @@ close_enclosed(struct parse_state *ps, char control)
         if (ctop->what == '(') {
                 ps->csptr--;
                 int len = sptr - ctop->depth;
-                uintptr_t v = is_cons
+                sp_cell_t v = is_cons
                               ?  sp_cons(ps, ctop->what, &ps->stack[sptr - len], len, cdr)
                               :  sp_list(ps, ctop->what, &ps->stack[sptr - len], len);
                 ps->sptr = sptr - len;
@@ -106,8 +107,26 @@ scan(struct parse_state *ps, char *start)
                 "#;"            { push_control(ps, ';'); continue; }
                 [.('`,#]        { push_control(ps, *t); continue; }
                 ")"             { res = close_enclosed(ps, *t); continue; }
-                [^]             { if (ps->fname) printf("%s:%i: ", ps->fname, ps->lineno); printf("unknown character %c\n", *t); res = 1;  continue; }
+                [^]             { int r = sp_error(ps, ps->fname, ps->lineno, *t); if (r < 0) return r; }
                 */
         }
         return res;
 }
+
+#if SP_ERROR != 3
+int sp_error(struct parse_state *ps, char *fname, int line, char unknown)
+{
+				if (!SP_ERROR)
+								return 0;
+				if (fname)
+								printf("%s:%i: ", fname, line);
+				else 
+								printf("line %i: ", line);
+				if (isprint(unknown))
+								printf("unknown character '%c'\n", unknown);
+				else
+								printf("unknown character '\\x%02x'\n", unknown);
+				return SP_ERROR == 2 ? -1 : 0;
+}
+#endif
+
