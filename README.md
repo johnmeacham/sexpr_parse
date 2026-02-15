@@ -8,7 +8,7 @@ defaults to uintptr_t (which can hold a void * or a number)
 
 In order to use it you should implement these functions to convert the raw atoms
 to your representation, the characters pointed to will be inside the buffer you
-passed to scan:
+passed to sp_scan:
 
 ```c
 uintptr_t sp_symbol(struct parse_state *ps, char *s, char *e);
@@ -32,11 +32,16 @@ as well as the cdr */
 uintptr_t sp_cons(struct parse_state *nonce, char delim, uintptr_t *start, int len, uintptr_t cdr);
 ```
 
-then in order to run the parser pass a null terminated string into scan.
+then in order to run the parser pass a null terminated string into sp_scan.
 ```c
 char *data = "(a b c . d)";
-struct parse_state ps = PARSE_STATE_INITIALIZER;
-scan(&ps, data);
+
+struct parse_state ps = PARSE_STATE_INIT("filename.scm", NULL);
+
+int count = sp_scan(&ps, data);
+
+for(int i = 0; i < count; i++)
+				process_cell(ps->stack[i]);
 ```
 no heap memory is allocated so nothing needs to be freed except what you
 allocate yourself in the sp_ routines. If you set the 'fname' field of

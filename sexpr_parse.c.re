@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdarg.h>
 
 
 static void
@@ -28,25 +29,35 @@ push_control(struct parse_state *ps, char control)
         ctop->depth = ps->sptr;
 }
 
+
+static int error(struct parse_state *ps, char *s, ...)
+{
+        ps->error++;
+        char errbuf[128];
+        va_list ap;
+        va_start(ap, s);
+        vsnprintf(errbuf, sizeof(errbuf), s, ap);
+        va_end(ap);
+        return sp_error(ps, ps->fname, ps->lineno + 1, errbuf);
+}
+
 static int
 close_enclosed(struct parse_state *ps, char control)
 {
         struct centry *ctop = ps->control_stack + ps->csptr - 1;
         bool is_cons = false;
         sp_cell_t cdr = 0;
-        int sptr = ps->sptr;
+        int sptr = ps->sptr, err = 0;
         if (ctop->what == '.') {
                 ps->csptr--;
                 int len = sptr - ctop->depth;
                 if (len != 1) {
-                        if (ps->fname)
-                                printf("%s:%i: ", ps->fname, ps->lineno);
-                        printf("bad cons tail %i\n", len);
-                        return 6;
+                        err = error(ps, "dot must be followed by exactly one item");
+                } else {
+                        cdr = ps->stack[--sptr];
+                        is_cons = true;
                 }
-                cdr = ps->stack[--sptr];
                 ctop--;
-                is_cons = true;
         }
         if (ctop->what == '(') {
                 ps->csptr--;
@@ -56,23 +67,20 @@ close_enclosed(struct parse_state *ps, char control)
                               :  sp_list(ps, ctop->what, &ps->stack[sptr - len], len);
                 ps->sptr = sptr - len;
                 push(ps, v);
-                return 0;
+                return err;
         }
-        if (ps->fname)
-                printf("%s:%i: ", ps->fname, ps->lineno);
-        printf("bad closing %c %02x\n", ctop->what, ctop->what);
-        return 5;
+        return err ? err : error(ps, "unexpected closing '%c'", control);
 }
 
 
 int
-scan(struct parse_state *ps, char *start)
+sp_scan(struct parse_state *ps, char *start)
 {
         ps->cursor = ps->start = start;
         char *t;
-        int res = 0;
+        int err = 0;
         char *YYMARKER;
-        while (!res) {
+        while (!err) {
                 t = ps->cursor;
                 /*!re2c
                 re2c:define:YYCTYPE  = "unsigned char";
@@ -81,7 +89,7 @@ scan(struct parse_state *ps, char *start)
                 re2c:indent:top      = 2;
                 re2c:yyfill:enable   = 0;
                 re2c:yych:conversion = 1;
-                re2c:labelprefix     = scan;
+                re2c:labelprefix     = sp_scan;
 
                 SINITIAL        = [a-zA-Z$!%&*:/<=>?^_~];
 
@@ -91,7 +99,7 @@ scan(struct parse_state *ps, char *start)
                 INT             = "0" | ( [1-9] DIGIT* ) ;
                 WS              = [ \t\r]+;
 
-                "\000"          { res = ps->sptr == 1 ? 0 : 2;  break; }
+                "\000"          { err = 1; break; }
                 ";" [^\n\000]*  { continue; }
                 "\n"            { ps->lineno++; continue; }
                 WS              { continue; }
@@ -106,27 +114,36 @@ scan(struct parse_state *ps, char *start)
                 ",@"            { push_control(ps, '@'); continue; }
                 "#;"            { push_control(ps, ';'); continue; }
                 [.('`,#]        { push_control(ps, *t); continue; }
-                ")"             { res = close_enclosed(ps, *t); continue; }
-                [^]             { int r = sp_error(ps, ps->fname, ps->lineno, *t); if (r < 0) return r; }
+                ")"             { err = close_enclosed(ps, *t); continue; }
+                [^]             { err = error(ps, "Unexpected char '%c'", *t); continue; }
                 */
         }
-        return res;
+        int csptr = ps->csptr;
+        while (csptr) {
+                struct centry *c = ps->control_stack + csptr - 1;
+                if (c->depth == -1)
+                        break;
+                if (c->unary)
+                        err = error(ps, "Hanging Unary '%c'", c->what);
+                else
+                        err = error(ps, "Unterminated '%c'", c->what);
+                csptr--;
+        }
+        return err < 0 ? err : ps->sptr;
 }
 
-#if SP_ERROR != 3
-int sp_error(struct parse_state *ps, char *fname, int line, char unknown)
+#if SP_ERROR != 4
+int sp_error(struct parse_state *ps, char *fname, int line, char *str)
 {
-				if (!SP_ERROR)
-								return 0;
-				if (fname)
-								printf("%s:%i: ", fname, line);
-				else 
-								printf("line %i: ", line);
-				if (isprint(unknown))
-								printf("unknown character '%c'\n", unknown);
-				else
-								printf("unknown character '\\x%02x'\n", unknown);
-				return SP_ERROR == 2 ? -1 : 0;
+        if (!SP_ERROR)
+                return 0;
+        if (fname)
+                fprintf(stderr, "%s:%i: ", fname, line);
+        else
+                fprintf(stderr, "line %i: ", line);
+        fprintf(stderr, "%s\n", str);
+        if (SP_ERROR == 3)
+                exit(1);
+        return SP_ERROR == 2 ? -1 : 0;
 }
 #endif
-

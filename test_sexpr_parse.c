@@ -126,17 +126,17 @@ void dump_value(uintptr_t u, int n, bool bol)
                 break;
         case TAG_CONS:
                 printf("(");
-								int printed = 0;
+                int printed = 0;
                 for (int i = 0; i < v->rest[0]; i++) {
                         if (((struct value *)(v->rest[i + 2]))->tag == TAG_COMMENT)
                                 continue;
                         if (printed)
                                 printf(" ");
                         dump_value(v->rest[i + 2], n, false);
-												printed++;
+                        printed++;
                 }
-								if (!printed)
-										printf("#;car-comment");
+                if (!printed)
+                        printf("#;car-comment");
                 printf(" . ");
                 if (v->tag == TAG_COMMENT)
                         printf("#;cdr-comment");
@@ -210,14 +210,18 @@ main(int argc, char *argv[])
 {
         char buffer[8192] = {};
         fread(buffer, sizeof(buffer) - 1, 1, stdin);
-        struct parse_state ps = PARSE_STATE_INITIALIZER;
-        sp_scan(&ps, buffer);
-				printf("Parsed %i expressions\n", ps.sptr);
-				for (int i = 0; i < ps.csptr; i++) {
-							struct centry *c = ps.control_stack + i;
-								printf("Control stack %i: %c unary %i depth %i\n", i, c->what, c->unary, c->depth);
-				}
-        for (int i = 0; i < ps.sptr; i++) {
+        struct parse_state ps = PARSE_STATE_INIT("(stdin)",NULL);
+        int count = sp_scan(&ps, buffer);
+        if (count < 0) {
+                printf("sp_scan error: %i\n", count);
+                return 1;
+        }
+        printf("Parsed %i expressions\n", count);
+        for (int i = 0; i < ps.csptr; i++) {
+                struct centry *c = ps.control_stack + i;
+                printf("Control stack %i: %c unary %i depth %i\n", i, c->what, c->unary, c->depth);
+        }
+        for (int i = 0; i < count; i++) {
                 dump_value(ps.stack[i], 0,  false);
                 printf("\n\n");
         }
