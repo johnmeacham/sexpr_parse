@@ -1,7 +1,11 @@
-/* plain testing that reads s-exprs into a static buffer then prints them out
+/* plain testing that reads s-exprs into memory, removes commented out
+ * expressions and then pretty prints the result.
+ *
  * The data is stored in a single malloced buffer and the uintptr_t nodes just
  * contain offsets into said buffer, all memory can be freed by freeing that one
  * buffer.
+ *
+ *
  */
 
 #include "sexpr_parse.h"
@@ -19,6 +23,7 @@ enum TAG {
         TAG_STRING,
         TAG_SYMBOL,
         TAG_UNARY,
+        TAG_COMMENT,
         TAG_VECTOR
 };
 
@@ -29,14 +34,14 @@ struct value {
 
 struct value *alloc_bytes(int tag, int n)
 {
-				struct value *s = calloc(1, sizeof(struct value) + n);
-				s->tag = tag;
-				return s;
+        struct value *s = calloc(1, sizeof(struct value) + n);
+        s->tag = tag;
+        return s;
 }
 
 struct value *alloc_value(int tag, int n)
 {
-				return alloc_bytes(tag, sizeof(uintptr_t) * n);
+        return alloc_bytes(tag, sizeof(uintptr_t) * n);
 }
 
 
@@ -63,6 +68,8 @@ int estimate_size(uintptr_t n)
                 }
                 sz++;
                 return sz;
+        case TAG_COMMENT:
+                return 0;
         }
         return 0;
 }
@@ -94,9 +101,12 @@ void dump_value(uintptr_t u, int n, bool bol)
                 sz = estimate_size(u);
                 // bool byline =  (n + sz > 40) && v->rest[0] > 2;
                 bool byline = sz > 10 &&  v->rest[0] > 2;
+                char beg = '(';
                 for (int i = 0; i < v->rest[0]; i++) {
+                        if (((struct value *)(v->rest[i + 1]))->tag == TAG_COMMENT)
+                                continue;
                         bool isbol = false;
-                        char beg = i ? ' ' : '(';
+//                        char beg = i ? ' ' : '(';
                         sz = estimate_size(v->rest[i + 1]);
                         if (byline && sz > 7  && !bol) {
                                 // && ((struct value *)v->rest[i + 1])->tag == TAG_VECTOR) {
@@ -108,17 +118,28 @@ void dump_value(uintptr_t u, int n, bool bol)
                         } else
                                 putc(beg, stdout);
                         dump_value(v->rest[i + 1], n + 1, isbol);
+                        beg = ' ';
                 }
+                if (beg == '(')
+                        putchar('(');
                 printf(")");
                 break;
         case TAG_CONS:
                 printf("(");
+								int printed = 0;
                 for (int i = 0; i < v->rest[0]; i++) {
-                        if (i)
+                        if (((struct value *)(v->rest[i + 2]))->tag == TAG_COMMENT)
+                                continue;
+                        if (printed)
                                 printf(" ");
                         dump_value(v->rest[i + 2], n, false);
+												printed++;
                 }
+								if (!printed)
+										printf("#;car-comment");
                 printf(" . ");
+                if (v->tag == TAG_COMMENT)
+                        printf("#;cdr-comment");
                 dump_value(v->rest[1], n, false);
                 printf(")");
         }
@@ -127,16 +148,16 @@ void dump_value(uintptr_t u, int n, bool bol)
 uintptr_t sp_string(struct parse_state *nonce, char *b, char *e)
 {
         struct value *s =  alloc_bytes(TAG_STRING, e - b + 1);
-				memcpy(s->rest, b, e - b);
-				((char *)s->rest)[e - b] = '\0';
+        memcpy(s->rest, b, e - b);
+        ((char *)s->rest)[e - b] = '\0';
         return (uintptr_t)s;
 }
 
 uintptr_t sp_symbol(struct parse_state *nonce, char *b, char *e)
 {
         struct value *s =  alloc_bytes(TAG_SYMBOL, e - b + 1);
-				memcpy(s->rest, b, e - b);
-				((char *)s->rest)[e - b] = '\0';
+        memcpy(s->rest, b, e - b);
+        ((char *)s->rest)[e - b] = '\0';
         return (uintptr_t)s;
 }
 
@@ -159,6 +180,8 @@ uintptr_t sp_number(struct parse_state *nonce, char *b, char *e, int radix)
 
 uintptr_t sp_unary(struct parse_state *nonce, char unop, uintptr_t v)
 {
+        if (unop == ';')
+                return (uintptr_t)alloc_value(TAG_COMMENT, 0);
         struct value *s = alloc_value(TAG_UNARY, 2);
         s->rest[0] = unop;
         s->rest[1] = v;
@@ -188,7 +211,12 @@ main(int argc, char *argv[])
         char buffer[8192] = {};
         fread(buffer, sizeof(buffer) - 1, 1, stdin);
         struct parse_state ps = PARSE_STATE_INITIALIZER;
-        scan(&ps, buffer);
+        sp_scan(&ps, buffer);
+				printf("Parsed %i expressions\n", ps.sptr);
+				for (int i = 0; i < ps.csptr; i++) {
+							struct centry *c = ps.control_stack + i;
+								printf("Control stack %i: %c unary %i depth %i\n", i, c->what, c->unary, c->depth);
+				}
         for (int i = 0; i < ps.sptr; i++) {
                 dump_value(ps.stack[i], 0,  false);
                 printf("\n\n");
